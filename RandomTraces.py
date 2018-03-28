@@ -1,14 +1,12 @@
 import pandas as pd
 import numpy as np
-from scipy import stats, interpolate, integrate
 import matplotlib.pyplot as plt
-from iminuit import Minuit
-import probfit
 from tqdm import tqdm
 
 
 plot_traces = True
 plot_stats  = True
+add_noise   = True
 
 
 np.random.seed(1)
@@ -19,12 +17,14 @@ np.random.seed(1)
 
 n_traces         = 50
 
-true_states      = [0.3, 0.5, 0.7, 0.9]
-true_occupancies = [0.2, 0.3, 0.4, 0.1]  # Must sum up to one
+true_states      = [0.3, 0.5, 0.7, 0.9]  # True underlying states
+true_occupancies = [0.2, 0.3, 0.4, 0.1]  # True occupancies (must sum up to one)
 
 bleach_time      = 20                    # Average bleaching time of donor/acceptor
 recording_time   = 60                    # Total recording time
-energy_barrier   = 10                    # Scales the dwell time in each state
+energy_barrier   = 5                    # Scales the dwell time in each state
+
+noise_level      = 0.05                 # Noise level
 
 #####################################
 # Generate traces
@@ -50,22 +50,34 @@ for i in tqdm(range(n_traces)):
     while frame < bleaching_time:
 
         # Decide state
-        fret = np.random.choice(a=true_states, p=true_occupancies)    # NB self transitions are allowed (should be changed)
+        fret = np.random.choice(a=true_states, p=true_occupancies)    # NB all transitions are are allowed (including self-transitions)
 
         # Decide dwell time
         occupancy = true_occupancies[true_states.index(fret)]
         dwell_time = energy_barrier * float(np.random.exponential(scale=occupancy, size=1))
 
         for n in range(int(dwell_time)):
+            if add_noise:
+                # Generate random noise
+                noise = np.random.normal(loc=0, scale=noise_level)
+            else:
+                noise = 0
+
             frame_lst.append(frame)
-            fret_lst.append(fret)
+            fret_lst.append(fret + noise)
             id_lst.append(i)
 
             frame +=1
 
     while frame < recording_time:
+        if add_noise:
+            # Generate random noise
+            noise = np.random.normal(loc=0, scale=noise_level)
+        else:
+            noise = 0
+
         frame_lst.append(frame)
-        fret_lst.append(0)
+        fret_lst.append(noise)
         id_lst.append(i)
 
         frame += 1
