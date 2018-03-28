@@ -103,13 +103,13 @@ for i in tqdm(range(n_traces)):
         plt.savefig("traces/random_trace_{:d}.pdf".format(i))
         plt.close()
 
-
-#####################################
-# Results
-#####################################
-
 # Export traces to csv file
 df_traces.to_csv("traces/traces.csv")
+
+
+#####################################
+# Plot other stuff
+#####################################
 
 if plot_stats:
     plt.figure()
