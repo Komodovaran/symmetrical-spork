@@ -12,10 +12,10 @@ def fret_trace_generator(n_traces            = 50,
                         true_occupancies     = [0.2, 0.3, 0.4, 0.1],  # True occupancies (must sum up to one)
                         bleach_time          = 20,                    # Average bleaching time of donor/acceptor
                         recording_time       = 60,                    # Total recording time
-                        energy_barrier       = 5,                     # Scales the dwell time in each state
+                        energy_barrier       = 5,                     # Scales the dwell times
                         noise_level          = 0.05,                  # Noise level
                         plot_traces          = True,
-                        plot_bleaching_times = True):                # NB. exports to sub folder named "stats"
+                        plot_bleaching_times = True):
 
     df_traces = pd.DataFrame()
     bleaching_time_lst = []
