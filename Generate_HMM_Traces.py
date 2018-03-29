@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import itertools
 import os
+from tqdm import tqdm
 
 def flatten_list(input_list, as_array = False):
     flat_lst = list(itertools.chain.from_iterable(input_list))
@@ -11,14 +12,14 @@ def flatten_list(input_list, as_array = False):
         flat_lst = np.array(flat_lst)
     return flat_lst
 
-def generate_traces(transitions, starts, means, noise = 0.04, n_traces = 100, trace_max_length = 200, bleach_time = 40):
+def generate_traces(output_title, transitions, starts, means, noise = 0.04, n_traces = 100, trace_max_length = 200, bleach_time = 40):
     # Initialize distributions from means and noise
     dists = []
     for m in means:
         dists.append(pg.NormalDistribution(m, noise))
 
     fret_lst, time_lst, id_lst = [], [], []
-    for i in range(n_traces):
+    for i in tqdm(range(n_traces)):
         # Bleach time from single exp dist
         bleach = np.int(np.random.exponential(bleach_time, 1))
 
@@ -49,12 +50,18 @@ def generate_traces(transitions, starts, means, noise = 0.04, n_traces = 100, tr
 
     # Save results to pickle
     os.makedirs("results/", exist_ok = True)
-    df.to_pickle("results/traces.pickle", compression = None)
+
+    output = "results/" + output_title + ".pickle"
+    df.to_pickle(output, compression = None)
 
 
-generate_traces(n_traces = 2,
-                bleach_time = 20,
-                means = (0.3, 0.8),
-                starts = np.array([0.50, 0.50]),
-                transitions = np.array([[0.5, 0.5],
-                                        [0.5, 0.5]]))
+case1 = dict(output_title     = "case 1",
+             n_traces         = 1000,
+             bleach_time      = 50,
+             trace_max_length = 200,
+             means            = (0.3, 0.8),
+             starts           = np.array([0.50, 0.50]),
+             transitions      = np.array([[0.9, 0.1],
+                                          [0.1, 0.9]]))
+
+generate_traces(**case1)
