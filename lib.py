@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import itertools
 import os
+import probfit
+import iminuit
 from sklearn import cluster
 
 pd.set_option("display.width", 1000)
@@ -115,9 +117,8 @@ def fit_hmm(obs,
             trans_prob = 0.25,
             self_trans = 0.90,
             state_noise = 0.1,
-            min_trans = 0,
-            init_means = False,
-            init_noise = False):
+            min_trans = 0.01,
+            init_means = False):
     """
     Fit traces with a Hidden Markov model.
 
@@ -141,39 +142,41 @@ def fit_hmm(obs,
         smallest transition to be considered
     init_means:
         list of initial means for each state. If none given, means are initialized by k-means
-    init_noise:
-        list of initial noise for each state. If none given, reverts to state_noise
 
     Returns
     -------
     a tuple containing an array of idealized fit values the same length as input and an array of hmm_lifetimes
     """
 
-    def _n_params(k_states):
-        return k_states * 4 + k_states ** 2
-
     def _bic(data, k_states, log_likelihood):
-        return np.log(len(data)) * _n_params(k_states) - 2 * log_likelihood
+        """
+        Bayesian information criterion
+        - parameters for k_states gaussians (2*k)
+        - k_states * k_states size transition matrix (k**2)
+        - start and end probabilities for each state (2*k)
+        """
+        n_params = k_states*4 + k_states**2
+        return np.log(len(data)) * n_params - 2 * log_likelihood
 
     def _means_type(data, init_means, k_states):
+
         if init_means and len(init_means) is k_states:
             dist_means = init_means
         else:
             dist_means = cluster.KMeans(k_states).fit(data).cluster_centers_
         return dist_means
 
-    def _noise_type(init_noise, k_states):
-        if init_noise and len(init_noise) is k_states:
-            dist_noise = init_noise
-        else:
-            dist_noise = [state_noise] * k_states
-        return dist_noise
+    def _start_end(k_states):
+        """
+        uniform starts and end probabilities as initial guesses.
+        Will be normalized internally by Pomegranate to sum up to 1
+        """
+        starts = np.array([1]*k_states)
+        ends = starts
+        return starts, ends
 
     # Read in the data and trim outliers
     df = pd.DataFrame(dict(time = time, obs = obs))
-
-    df[df["obs"] < -0.1] = -0.1
-    df[df["obs"] > 1.1] = 1.1
 
     X = df["obs"].values.reshape(-1, 1)
 
@@ -183,99 +186,90 @@ def fit_hmm(obs,
 
     if len(X) < 5:
         states = [1]
-    elif init_means and init_noise and init_means == init_noise:
+    elif init_means:
         states = [len(init_means)]
     else:
         states = [1, 2, 3, 4]
 
-    for i in states:
-        if i == 1:
-            means = _means_type(X, init_means, k_states = i)
-            noise = _noise_type(init_noise, k_states = i)
-
-            dists = [pg.NormalDistribution(means[0], noise[0])]
+    for k in states:
+        if k == 1:
+            dists = [pg.NormalDistribution(means[0], state_noise)]
 
             trans_mat = np.array([[trans_prob]])
 
-            starts = np.array([1.0])
-            ends = np.array([0.1])
+            starts, ends = _start_end(k)
+
             model = pg.HiddenMarkovModel.from_matrix(trans_mat, dists, starts, ends)
 
             loglik = model.log_probability(X)
-            bic = _bic(X, i, loglik)
+            bic = _bic(X, k, loglik)
 
             MLE.append(loglik)
             allmodels.append(model)
             BIC.append(bic)
 
-        if i == 2:
-            means = _means_type(X, init_means, k_states = i)
-            noise = _noise_type(init_noise, k_states = i)
+        if k == 2:
+            means = _means_type(X, init_means, k_states = k)
 
-            dists = [pg.NormalDistribution(means[0], noise[0]),
-                     pg.NormalDistribution(means[1], noise[1])]
+            dists = [pg.NormalDistribution(means[0], state_noise),
+                     pg.NormalDistribution(means[1], state_noise)]
 
             trans_mat = np.array([[self_trans, trans_prob],
                                   [trans_prob, self_trans]])
 
-            starts = np.array([1.0, 0.0, 0.0])
-            ends = np.array([0.0, 0.1])
+            starts, ends = _start_end(k)
+
             model = pg.HiddenMarkovModel.from_matrix(trans_mat, dists, starts, ends)
 
             loglik = model.log_probability(X)
-
-            bic = _bic(X, i, loglik)
+            bic = _bic(X, k, loglik)
 
             MLE.append(loglik)
             allmodels.append(model)
             BIC.append(bic)
 
-        if i == 3:
-            means = _means_type(X, init_means, k_states = i)
-            noise = _noise_type(init_noise, k_states = i)
+        if k == 3:
+            means = _means_type(X, init_means, k_states = k)
 
-            dists = [pg.NormalDistribution(means[0], noise[0]),
-                     pg.NormalDistribution(means[1], noise[1]),
-                     pg.NormalDistribution(means[2], noise[2])]
+
+            dists = [pg.NormalDistribution(means[0], state_noise),
+                     pg.NormalDistribution(means[1], state_noise),
+                     pg.NormalDistribution(means[2], state_noise)]
 
             trans_mat = np.array([[self_trans, trans_prob, trans_prob],
                                   [trans_prob, self_trans, trans_prob],
                                   [trans_prob, trans_prob, self_trans]])
 
-            # starts = np.array([1, 1, 1])
-            # ends = np.array([1, 1, 1])
-            starts = np.array([1.0, 0.0, 0.0, 0.0])
-            ends = np.array([0.0, 0.0, 0.1])
+            starts, ends = _start_end(k)
+
             model = pg.HiddenMarkovModel.from_matrix(trans_mat, dists, starts, ends)
 
             loglik = model.log_probability(X)
-            bic = _bic(X, i, loglik)
+            bic = _bic(X, k, loglik)
 
             MLE.append(loglik)
             allmodels.append(model)
             BIC.append(bic)
 
+        elif k == 4:
+            means = _means_type(X, init_means, k_states = k)
 
-        elif i == 4:
-            means = _means_type(X, init_means, k_states = i)
-            noise = _noise_type(init_noise, k_states = i)
-
-            dists = [pg.NormalDistribution(means[0], noise[0]),
-                     pg.NormalDistribution(means[1], noise[1]),
-                     pg.NormalDistribution(means[2], noise[2]),
-                     pg.NormalDistribution(means[3], noise[3])]
+            dists = [pg.NormalDistribution(means[0], state_noise),
+                     pg.NormalDistribution(means[1], state_noise),
+                     pg.NormalDistribution(means[2], state_noise),
+                     pg.NormalDistribution(means[3], state_noise)]
 
             trans_mat = np.array([[self_trans, trans_prob, trans_prob, trans_prob],
                                   [trans_prob, self_trans, trans_prob, trans_prob],
                                   [trans_prob, trans_prob, self_trans, trans_prob],
                                   [trans_prob, trans_prob, trans_prob, self_trans]])
 
-            starts = np.array([1.0, 0.0, 0.0, 0.0, 0.0])
-            ends = np.array([0.0, 0.0, 0.0, 0.1])
+            starts, ends = _start_end(k)
+
             model = pg.HiddenMarkovModel.from_matrix(trans_mat, dists, starts, ends)
 
             loglik = model.log_probability(X)
-            bic = _bic(X, i, loglik)
+            bic = _bic(X, k, loglik)
 
             MLE.append(loglik)
             allmodels.append(model)
@@ -283,7 +277,7 @@ def fit_hmm(obs,
 
     if len(X) < 5:
         model = allmodels[0]
-    elif init_means or init_noise:
+    elif init_means:
         model = allmodels[len(init_means) - 1]
     elif model_selection is "likelihood":
         model = allmodels[np.argmin(BIC)]
@@ -304,12 +298,14 @@ def fit_hmm(obs,
 
     idealized = df["idealized"]
 
-    lifetimes = hmm_lifetimes(idealized_trace = df["idealized"], min_trans = min_trans)
+    lifetimes = hmm_lifetimes(idealized_trace = df["idealized"],
+                              time = df["time"],
+                              min_trans = min_trans)
 
     return idealized, lifetimes
 
 
-def hmm_lifetimes(idealized_trace, min_trans = 0):
+def hmm_lifetimes(idealized_trace, time, min_trans = 0.01, drop_extra_cols = False):
     """
     Get lifetimes from trace fits
 
@@ -326,7 +322,8 @@ def hmm_lifetimes(idealized_trace, min_trans = 0):
     """
 
     # noinspection PyTypeChecker
-    df = pd.DataFrame(dict(idealized = idealized_trace))
+    df = pd.DataFrame(dict(idealized = idealized_trace,
+                           time = time))
 
     # Find E_after from E_before
     df["E_after"] = np.roll(df["idealized"], -1)
@@ -346,12 +343,56 @@ def hmm_lifetimes(idealized_trace, min_trans = 0):
     df = df[1:]   # drop first observed lifetime
     df = df[:-1]  # drop last observed lifetime
 
-    df.drop(["obs", "time", "hmm_state", "unique_state_ID", "state_jump"], axis = 1, inplace = True)
+    df.drop(["obs", "time", "hmm_state", "unique_state_ID", "state_jump"], axis = 1, inplace = True, errors = "ignore")
     df.rename(columns = {'idealized': 'E_before'}, inplace = True)
 
     lifetimes = df
 
     return lifetimes
+
+
+def lh_fit(data, f, binned_likelihood, **kwargs):
+    """
+    Parameters
+    ----------
+    data: array
+        unbinned data to fit
+    f: function
+        function to fit which returns the likelihood
+    binned_likelihood: bool
+        binned or unbinned likelihood
+    kwargs:
+        write parameters to fit like a (scalar), a_limit (range), fix_a (bool)
+
+    Returns
+    -------
+    params: array
+        array of estimated fit parameters
+    errs: array
+        array of estimated fit parameter errors
+    loglh: scalar
+        the minimized log likelihood
+    """
+    # Create an unbinned likelihood object with function and data.
+    if binned_likelihood:
+        minimize = probfit.BinnedLH(f, data)
+    else:
+        minimize = probfit.UnbinnedLH(f, data)
+
+    # Minimizes the unbinned likelihood for the given function
+    m = iminuit.Minuit(minimize,
+                       **kwargs,
+                       print_level = 0,
+                       pedantic = False)
+    m.migrad()
+
+    params = np.array([val for val in m.values.values()])
+    errs   = np.array([val for val in m.errors.values()])
+    log_lh = np.sum(np.log(f(data, *params)))
+
+    return params, errs, log_lh
+
+
 
 
 def save_current_fig(output_name):
