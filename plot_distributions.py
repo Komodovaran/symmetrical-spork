@@ -14,12 +14,7 @@ PLOT_LIFETIMES     = False
 TEST_HMM_FIT       = False
 
 
-# plt.plot(df_noise[df_noise["id"] == 1]["fret"])
-# plt.plot(df_true[df_true["id"] == 1]["fret"])
-# plt.show()
-
 if PLOT_RANDOM_TRACES:
-
     # Pick 6 random trace IDs where one must be full length
     rand_traces_noise, random_ids = lib.pick_random_traces(trace_df = df_noise, n_traces = 6)
     rand_traces_true = df_true[df_true["id"].isin(random_ids)]
@@ -91,4 +86,5 @@ if PLOT_LIFETIMES:
 
 
 if TEST_HMM_FIT:
+    #TODO: finish this
     pass
