@@ -7,16 +7,16 @@ import os
 
 np.random.seed(1)
 
-def fret_trace_generator(n_traces              = 50,
-                        fret_states            = [0.2, 0.4, 0.6, 0.8],  # True fret states
-                        transition_probability = [0.2, 0.4, 0.3, 0.1],  # Probabilities must sum up to one
-                        energy_barrier         = 20,                    # Scales the dwell times
-                        bleach_time            = 20,                    # Average bleaching time of donor/acceptor
-                        recording_time         = 100,                   # Total recording time
-                        noise_level            = 0.05,                  # Noise level
-                        include_bleaching      = False,                 # Generate random noise after bleaching
-                        plot_traces            = False,
-                        plot_other             = True):
+def fret_trace_generator(n_traces               = 50,
+                         fret_states            = (0.2, 0.4, 0.6, 0.8),  # True fret states
+                         transition_probability = (0.2, 0.4, 0.3, 0.1),  # Probabilities must sum up to one
+                         energy_barrier         = 20,                    # Scales the dwell times
+                         bleach_time            = 20,                    # Average bleaching time of donor/acceptor
+                         recording_time         = 100,                   # Total recording time
+                         noise_level            = 0.05,                  # Noise level
+                         include_bleaching      = False,                 # Generate random noise after bleaching
+                         plot_traces            = False,
+                         plot_other             = True):
 
     df_traces = pd.DataFrame()
     bleaching_time_lst = []
@@ -120,7 +120,7 @@ def fret_trace_generator(n_traces              = 50,
 
         # Bleaching time histogram
         plt.figure()
-        plt.hist(bleaching_time_lst, bins=15, label="N_traces = {:d}".format(len(bleaching_time_lst)))
+        plt.hist(bleaching_time_lst, color = "lightgrey", bins=15, label="N_traces = {:d}".format(len(bleaching_time_lst)))
         plt.xlabel("Bleaching time (frames)")
         plt.ylabel("#")
         plt.legend()
@@ -130,7 +130,7 @@ def fret_trace_generator(n_traces              = 50,
         hist_binwidths = np.arange(-0.1, 1.1, 0.01)
 
         plt.figure()
-        plt.hist(df_traces["FRET (observed)"], bins=hist_binwidths, normed=True)
+        plt.hist(df_traces["FRET (observed)"], color = "lightgrey", bins=hist_binwidths, normed=True)
         plt.xlabel("FRET")
         plt.ylabel("Probability density")
         plt.xlim(-0.1, 1.1)
