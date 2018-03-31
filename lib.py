@@ -13,7 +13,6 @@ pd.set_option('display.max_rows', 1000)
 pd.options.mode.chained_assignment = None  # default='warn'
 
 
-
 def flatten_list(input_list, as_array = False):
     """
     Parameters
@@ -77,15 +76,21 @@ def generate_traces(output_title,
     fret_lst, time_lst, id_lst = [], [], []
     n = 0
     while n < n_traces:
-        # Bleach time from single exp dist
-        bleach = np.int(np.random.exponential(bleach_time, 1))
+        if bleach_time:
+            # Bleach time from single exp dist
+            bleach = np.int(np.random.exponential(bleach_time, 1))
 
-        if bleach < trace_min_len:
-            continue
+            if bleach < trace_min_len:
+                continue
 
-        # Generate samples, and remove datapoints after bleaching
-        fret = np.array(model.sample(trace_max_len))[:bleach]
-        time = np.array(range(0, len(fret)))[:bleach]
+            # Generate samples, and remove datapoints after bleaching
+            fret = np.array(model.sample(trace_max_len))[:bleach]
+            time = np.array(range(len(fret)))[:bleach]
+            time +=1
+        else:
+            fret = np.array(model.sample(trace_max_len))
+            time = np.array(range(len(fret)))
+            time +=1
 
         # Append results
         fret_lst.append(fret)
@@ -393,10 +398,36 @@ def lh_fit(data, f, binned_likelihood, **kwargs):
     return params, errs, log_lh
 
 
-
-
 def save_current_fig(output_name):
     os.makedirs("results/", exist_ok = True)
     output = "results/" + output_name + ".pdf"
     plt.savefig(output)
     plt.close()
+
+
+def pick_random_traces(trace_df, n_traces, min_frames = "full"):
+    """
+    Parameters
+    ----------
+    trace_df:
+        pandas dataframe containing all traces
+    n_traces:
+        number of traces to randomly select
+    min_frames:
+        at least one trace will fulfil this minimum length criterion.
+
+    Returns
+    -------
+    dataframe with randomly selected traces
+    """
+
+    if min_frames is "full":
+        min_frames = trace_df["time"].max()
+
+    t = 0
+    while t < min_frames:
+        random_ids = np.random.choice(len(trace_df["id"].unique()), size = n_traces)
+        random_traces = trace_df[trace_df["id"].isin(random_ids)]
+        t = random_traces["time"].max()
+
+    return random_traces, random_ids
