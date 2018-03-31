@@ -7,50 +7,58 @@ from scipy import stats
 import uncertainties as un
 
 # Read pickles
-df_noise         = pd.read_pickle("results/2_state_noise.pickle")
-df_true          = pd.read_pickle("results/2_state_true.pickle")
-df_true_nobleach = pd.read_pickle("results/2_state_true_nobleach.pickle")
+df_S_noise         = pd.read_pickle("data/2S_state_noise.pickle")
+df_S_true          = pd.read_pickle("data/2S_state_true.pickle")
+df_S_true_nobleach = pd.read_pickle("data/2S_state_true_nobleach.pickle")
+
+df_F_noise         = pd.read_pickle("data/2F_state_noise.pickle")
+df_F_true          = pd.read_pickle("data/2F_state_true.pickle")
+df_F_true_nobleach = pd.read_pickle("data/2F_state_true_nobleach.pickle")
 
 # Make it so that all steps function independently, to reduce re-computing time
-PLOT_RANDOM_TRACES = False
+PLOT_RANDOM_TRACES = True
 PLOT_DISTRIBUTIONS = False
-PLOT_LIFETIMES     = True
+PLOT_LIFETIMES     = False
 TEST_HMM_FIT       = False
 
+# Iterate over this
+dfs = [("S_", df_S_noise, df_S_true, df_S_true_nobleach),
+       ("F_", df_F_noise, df_F_true, df_F_true_nobleach)]
 
 if PLOT_RANDOM_TRACES:
-    # Pick 6 random trace IDs where one must be full length
-    rand_traces_noise, random_ids = lib.pick_random_traces(trace_df = df_noise, n_traces = 6)
-    rand_traces_true = df_true[df_true["id"].isin(random_ids)]
+    for dftitle, df_noise, df_true, df_true_nobleach in dfs:
+        # Pick 6 random trace IDs where one must be full length
+        rand_traces_noise, random_ids = lib.pick_random_traces(trace_df = df_noise, n_traces = 6)
+        rand_traces_true = df_true[df_true["id"].isin(random_ids)]
 
-    # Plot selected random traces
-    fig, ax = plt.subplots(nrows = 6, ncols = 1, figsize = (5,10))
-    ax = ax.ravel()
-    n = 0
+        # Plot selected random traces
+        fig, ax = plt.subplots(nrows = 6, ncols = 1, figsize = (5,10))
+        ax = ax.ravel()
+        n = 0
 
-    for id, grp in rand_traces_noise.groupby("id"):
-        grp_true = rand_traces_true[rand_traces_true["id"] == id]
+        for id, grp in rand_traces_noise.groupby("id"):
+            grp_true = rand_traces_true[rand_traces_true["id"] == id]
 
-        ax[n].plot(grp["time"], grp["fret"], label = "Observed trace", color = "royalblue", lw = 1)
-        ax[n].plot(grp_true["time"], grp_true["fret"], label = "Underlying true trace", color = "firebrick", lw = 0.8)
+            ax[n].plot(grp["time"], grp["fret"], label = "Observed trace", color = "royalblue", lw = 1)
+            ax[n].plot(grp_true["time"], grp_true["fret"], label = "Underlying true trace", color = "firebrick", lw = 0.8)
 
-        ax[n].set_xlim(0,200)
-        ax[n].set_ylim(0,1)
-        ax[n].set_xlabel("time")
-        ax[n].set_ylabel("FRET")
-        ax[n].legend(loc = "upper right")
-        n += 1
+            ax[n].set_xlim(0,200)
+            ax[n].set_ylim(0,1)
+            ax[n].set_xlabel("time")
+            ax[n].set_ylabel("FRET")
+            ax[n].legend(loc = "upper right")
+            n += 1
 
-    plt.tight_layout()
-    lib.save_current_fig("example_traces")
+        plt.tight_layout()
+        lib.save_current_fig(dftitle + "example_traces")
 
 if PLOT_DISTRIBUTIONS:
     bins = np.arange(0, 1, 0.03)
     fig, ax = plt.subplots(nrows = 1, ncols = 2, figsize = (9,4))
     ax = ax.ravel()
 
-    ax[0].hist(df_true["fret"], bins = bins, color = "firebrick", normed = True, zorder = 1, label = "True distribution")
-    ax[1].hist(df_noise["fret"], bins = bins, color = "royalblue", normed = True, zorder = 2, label = "Observed distribution")
+    ax[0].hist(df_F_true["fret"], bins = bins, color = "firebrick", normed = True, zorder = 1, label = "True distribution")
+    ax[1].hist(df_F_noise["fret"], bins = bins, color = "royalblue", normed = True, zorder = 2, label = "Observed distribution")
 
     for a in ax:
         a.set_xlim(0,1)
@@ -68,7 +76,7 @@ if PLOT_LIFETIMES:
     min_lengths = [0, 0.1, 0.25, 0.50, 0.75, 1] # percentages of max trace length.
 
     # Maximum number of traces
-    n_orig = len(df_true_nobleach["id"].unique())
+    n_orig = len(df_F_true_nobleach["id"].unique())
 
     taus = []
     lifetimes = []
@@ -78,12 +86,12 @@ if PLOT_LIFETIMES:
     for trace_len in min_lengths:
         # Check how much bleaching actually biases the true lifetime for our observations
         if trace_len == 0:
-            df = df_true_nobleach
-            tmax_i = int(df_true_nobleach["time"].max())
+            df = df_F_true_nobleach
+            tmax_i = int(df_F_true_nobleach["time"].max())
         # Else cut off traces that are shorter than a certain length
         else:
-            tmax_i = int(df_true["time"].max() * trace_len)
-            df = df_true.groupby("id").filter(lambda x: len(x) >= tmax_i)
+            tmax_i = int(df_F_true["time"].max() * trace_len)
+            df = df_F_true.groupby("id").filter(lambda x: len(x) >= tmax_i)
 
         lifetimes_i = []
         for id, grp in tqdm(df.groupby("id")):
@@ -131,7 +139,7 @@ if PLOT_LIFETIMES:
 
     # Quite remarkably, the lifetime can be accurately estimated from very few traces, and so this certainly
     # tells us that more data isn't necessarily better, if the quality is poor
-
+    # TODO: do the same for slow enzyme
 
 if TEST_HMM_FIT:
     # do we need this, as we already have the fit of the trace?

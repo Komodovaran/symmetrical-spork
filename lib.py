@@ -109,9 +109,9 @@ def generate_traces(output_title,
                            id = id_lst))
 
     # Save results to pickle
-    os.makedirs("results/", exist_ok = True)
+    os.makedirs("data/", exist_ok = True)
 
-    output = "results/" + output_title + ".pickle"
+    output = "data/" + output_title + ".pickle"
     df.to_pickle(output, compression = None)
 
 
