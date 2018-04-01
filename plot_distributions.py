@@ -16,7 +16,8 @@ df_F_true          = pd.read_pickle("data/2F_state_true.pickle")
 df_F_true_nobleach = pd.read_pickle("data/2F_state_true_nobleach.pickle")
 
 # Make it so that all steps function independently, to reduce re-computing time
-PLOT_RANDOM_TRACES = True
+PLOT_SINGLE_TRACE  = True
+PLOT_RANDOM_TRACES = False
 PLOT_DISTRIBUTIONS = False
 PLOT_LIFETIMES     = False
 TEST_HMM_FIT       = False
@@ -24,6 +25,33 @@ TEST_HMM_FIT       = False
 # Iterate over this
 dfs = [("S_", df_S_noise, df_S_true, df_S_true_nobleach),
        ("F_", df_F_noise, df_F_true, df_F_true_nobleach)]
+
+
+if PLOT_SINGLE_TRACE:
+    for dftitle, df_noise, df_true, df_true_nobleach in dfs:
+        # Pick 6 random trace IDs where one must be full length
+        rand_trace, _ = lib.pick_random_traces(trace_df = df_true, n_traces = 1)
+
+        # Plot selected random traces
+        fig, ax = plt.subplots(nrows = 1, ncols = 1, figsize = (5,2))
+
+        lifetimes = lib.hmm_lifetimes(rand_trace["fret"], rand_trace["time"])
+        n_datapoints = len(lifetimes)
+
+        for id, grp in rand_trace.groupby("id"):
+            ax.plot(grp["time"], grp["fret"], label = "Trace fit", color = "royalblue", lw = 1)
+
+            grp = grp.loc[grp["fret"].shift(-1) != grp["fret"]]
+            ax.plot(grp["time"], grp["fret"], "o", markersize = 5, color = "royalblue", label = "Observed {} transitions".format(n_datapoints))
+
+            ax.set_xlim(0,200)
+            ax.set_ylim(0,1)
+            ax.set_xlabel("time")
+            ax.set_ylabel("FRET")
+            ax.legend(loc = "upper right")
+
+        plt.tight_layout()
+        lib.save_current_fig(dftitle + "single_trace")
 
 if PLOT_RANDOM_TRACES:
     for dftitle, df_noise, df_true, df_true_nobleach in dfs:
@@ -69,77 +97,76 @@ if PLOT_DISTRIBUTIONS:
     lib.save_current_fig("distributions")
 
 if PLOT_LIFETIMES:
-    def _single_exp(x, scale):
-        return stats.expon.pdf(x, loc = 0, scale = scale)
 
-    # Plot lifetimes of true distribution, and see how observed trace lengths affect this
-    min_lengths = [0, 0.1, 0.25, 0.50, 0.75, 1] # percentages of max trace length.
+    for dftitle, df_noise, df_true, df_true_nobleach in dfs:
 
-    # Maximum number of traces
-    n_orig = len(df_F_true_nobleach["id"].unique())
+        def _single_exp(x, scale):
+            return stats.expon.pdf(x, loc = 0, scale = scale)
 
-    taus = []
-    lifetimes = []
-    n_traces = []
-    tmax = []
+        # Plot lifetimes of true distribution, and see how observed trace lengths affect this
+        min_lengths = [0, 0.1, 0.25, 0.50, 0.75, 1] # percentages of max trace length.
 
-    for trace_len in min_lengths:
-        # Check how much bleaching actually biases the true lifetime for our observations
-        if trace_len == 0:
-            df = df_F_true_nobleach
-            tmax_i = int(df_F_true_nobleach["time"].max())
-        # Else cut off traces that are shorter than a certain length
-        else:
-            tmax_i = int(df_F_true["time"].max() * trace_len)
+        # Maximum number of traces
+        n_orig = len(df_true_nobleach["id"].unique())
+
+        taus = []
+        lifetimes = []
+        n_traces = []
+        tmax = []
+
+        for trace_len in min_lengths:
+            tmax_i = int(df_true_nobleach["time"].max() * trace_len)
             df = df_F_true.groupby("id").filter(lambda x: len(x) >= tmax_i)
 
-        lifetimes_i = []
-        for id, grp in tqdm(df.groupby("id")):
-            lif = lib.hmm_lifetimes(grp["fret"], grp["time"])
-            lifetimes_i.append(lif["lifetime"])
+            lifetimes_i = []
+            for id, grp in tqdm(df.groupby("id")):
+                lif = lib.hmm_lifetimes(grp["fret"], grp["time"])
+                lifetimes_i.append(lif["lifetime"])
 
-        lifetimes_i = lib.flatten_list(lifetimes_i, as_array = True)
+            lifetimes_i = lib.flatten_list(lifetimes_i, as_array = True)
 
-        tau_i, err_i, _ = lib.lh_fit(f = _single_exp,
-                              data = lifetimes_i,
-                              binned_likelihood = True,
-                              scale = 8,
-                              limit_scale = (1, 15))
+            tau_i, err_i, _ = lib.lh_fit(f = _single_exp,
+                                  data = lifetimes_i,
+                                  binned_likelihood = True,
+                                  scale = 8,
+                                  limit_scale = (1, 15))
 
-        tau_i = un.ufloat(*tau_i, *err_i)
+            tau_i = un.ufloat(*tau_i, *err_i)
 
-        n_traces.append(len(df["id"].unique()))
-        taus.append(tau_i)
-        lifetimes.append(lifetimes_i)
-        tmax.append(tmax_i)
+            n_traces.append(len(df["id"].unique()))
+            taus.append(tau_i)
+            lifetimes.append(lifetimes_i)
+            tmax.append(tmax_i)
 
-    xpts = np.linspace(0, 20, 200)
-    bins = np.arange(0,20, 1)
+        xpts = np.linspace(0, 20, 200)
+        bins = np.arange(0,20, 1)
 
-    fig, ax = plt.subplots(nrows = 2, ncols = 3)
-    ax = ax.ravel()
+        fig, ax = plt.subplots(nrows = 2, ncols = 3, figsize = (12,6))
+        ax = ax.ravel()
 
-    for i in range(len(ax)):
-        ax[i].hist(lifetimes[i],
-                   color = "lightgrey",
-                   bins = bins,
-                   normed = True,
-                   label = "trace length $\geq$ {}% of longest\n{}/{} traces".format(int(min_lengths[i]*100),
-                                                                                     n_traces[i],
-                                                                                     n_orig))
+        for i in range(len(ax)):
+            ax[i].hist(lifetimes[i],
+                       color = "lightgrey",
+                       bins = bins,
+                       normed = True,
+                       label = "trace length $\geq$ {}% of longest\n{}/{} traces\n{} datapoints".format(int(min_lengths[i]*100),
+                                                                                                        n_traces[i],
+                                                                                                        n_orig,
+                                                                                                        n_datapoints))
 
-        ax[i].plot(xpts, _single_exp(xpts, taus[i].n), color = "firebrick", label = taus[i])
-        ax[i].legend(loc = "upper right")
-        ax[i].set_xlim(1)
-        ax[i].set_xlabel("Dwell time")
-        ax[i].set_ylabel("Probability density")
+            ax[i].plot(xpts, _single_exp(xpts, taus[i].n), color = "firebrick", label = r"$\tau$ = {}".format(taus[i]))
+            ax[i].legend(loc = "upper right")
+            ax[i].set_xlim(1)
+            ax[i].set_xlabel("Dwell time")
+            ax[i].set_ylabel("Probability density")
 
-    plt.tight_layout()
-    plt.show()
+        plt.tight_layout()
+        lib.save_current_fig(dftitle + "lifetimes")
+        plt.show()
 
-    # Quite remarkably, the lifetime can be accurately estimated from very few traces, and so this certainly
-    # tells us that more data isn't necessarily better, if the quality is poor
-    # TODO: do the same for slow enzyme
+        # Quite remarkably, the lifetime can be accurately estimated from very few traces, and so this certainly
+        # tells us that more data isn't necessarily better, if the quality is poor
+        # TODO: do the same for slow enzyme
 
 if TEST_HMM_FIT:
     # do we need this, as we already have the fit of the trace?

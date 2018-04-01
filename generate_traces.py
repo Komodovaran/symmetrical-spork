@@ -8,7 +8,7 @@ np.random.seed(1)
 SMALL_SAMPLE_TEST = True
 
 n_traces_full = 300
-n_traces_test = 50
+n_traces_test = 15
 noise_level   = 0.10
 bleach_time   = 70
 trace_min_len = 10
