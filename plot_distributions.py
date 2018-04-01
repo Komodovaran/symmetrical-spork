@@ -1,10 +1,11 @@
 import lib as lib
+import funcs as funcs
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import tqdm
-from scipy import stats
 import uncertainties as un
+from tqdm import tqdm
 
 # Read pickles
 df_S_noise         = pd.read_pickle("data/2S_state_noise.pickle")
@@ -16,44 +17,44 @@ df_F_true          = pd.read_pickle("data/2F_state_true.pickle")
 df_F_true_nobleach = pd.read_pickle("data/2F_state_true_nobleach.pickle")
 
 # Make it so that all steps function independently, to reduce re-computing time
-PLOT_SINGLE_TRACE  = True
-PLOT_RANDOM_TRACES = False
-PLOT_DISTRIBUTIONS = False
-PLOT_LIFETIMES     = False
-TEST_HMM_FIT       = False
+SINGLE_TRACE  = False
+RANDOM_TRACES = False
+DISTRIBUTIONS = False
+LIFETIMES     = False
+STICH_TRACES  = True
+
 
 # Iterate over this
 dfs = [("S_", df_S_noise, df_S_true, df_S_true_nobleach),
        ("F_", df_F_noise, df_F_true, df_F_true_nobleach)]
 
 
-if PLOT_SINGLE_TRACE:
+if SINGLE_TRACE:
     for dftitle, df_noise, df_true, df_true_nobleach in dfs:
         # Pick 6 random trace IDs where one must be full length
         rand_trace, _ = lib.pick_random_traces(trace_df = df_true, n_traces = 1)
 
         # Plot selected random traces
-        fig, ax = plt.subplots(nrows = 1, ncols = 1, figsize = (5,2))
+        fig, ax = plt.subplots(nrows = 1, ncols = 1, figsize = (6,2))
 
         lifetimes = lib.hmm_lifetimes(rand_trace["fret"], rand_trace["time"])
         n_datapoints = len(lifetimes)
 
-        for id, grp in rand_trace.groupby("id"):
-            ax.plot(grp["time"], grp["fret"], label = "Trace fit", color = "royalblue", lw = 1)
+        ax.plot(rand_trace["time"], rand_trace["fret"], label = "Trace fit", color = "royalblue", lw = 1)
 
-            grp = grp.loc[grp["fret"].shift(-1) != grp["fret"]]
-            ax.plot(grp["time"], grp["fret"], "o", markersize = 5, color = "royalblue", label = "Observed {} transitions".format(n_datapoints))
+        rand_trace = rand_trace.loc[rand_trace["fret"].shift(-1) != rand_trace["fret"]] # remove consecutive duplicates
+        ax.plot(rand_trace["time"], rand_trace["fret"], "o", markersize = 5, color = "royalblue", label = "Observed {} transitions".format(n_datapoints))
 
-            ax.set_xlim(0,200)
-            ax.set_ylim(0,1)
-            ax.set_xlabel("time")
-            ax.set_ylabel("FRET")
-            ax.legend(loc = "upper right")
+        ax.set_xlim(0,200)
+        ax.set_ylim(0,1)
+        ax.set_xlabel("time")
+        ax.set_ylabel("FRET")
+        ax.legend(loc = "upper right")
 
         plt.tight_layout()
         lib.save_current_fig(dftitle + "single_trace")
 
-if PLOT_RANDOM_TRACES:
+if RANDOM_TRACES:
     for dftitle, df_noise, df_true, df_true_nobleach in dfs:
         # Pick 6 random trace IDs where one must be full length
         rand_traces_noise, random_ids = lib.pick_random_traces(trace_df = df_noise, n_traces = 6)
@@ -80,7 +81,7 @@ if PLOT_RANDOM_TRACES:
         plt.tight_layout()
         lib.save_current_fig(dftitle + "example_traces")
 
-if PLOT_DISTRIBUTIONS:
+if DISTRIBUTIONS:
     bins = np.arange(0, 1, 0.03)
     fig, ax = plt.subplots(nrows = 1, ncols = 2, figsize = (9,4))
     ax = ax.ravel()
@@ -96,12 +97,8 @@ if PLOT_DISTRIBUTIONS:
     plt.tight_layout()
     lib.save_current_fig("distributions")
 
-if PLOT_LIFETIMES:
-
+if LIFETIMES:
     for dftitle, df_noise, df_true, df_true_nobleach in dfs:
-
-        def _single_exp(x, scale):
-            return stats.expon.pdf(x, loc = 0, scale = scale)
 
         # Plot lifetimes of true distribution, and see how observed trace lengths affect this
         min_lengths = [0, 0.1, 0.25, 0.50, 0.75, 1] # percentages of max trace length.
@@ -116,7 +113,7 @@ if PLOT_LIFETIMES:
 
         for trace_len in min_lengths:
             tmax_i = int(df_true_nobleach["time"].max() * trace_len)
-            df = df_F_true.groupby("id").filter(lambda x: len(x) >= tmax_i)
+            df = df_true.groupby("id").filter(lambda x: len(x) >= tmax_i)
 
             lifetimes_i = []
             for id, grp in tqdm(df.groupby("id")):
@@ -125,10 +122,10 @@ if PLOT_LIFETIMES:
 
             lifetimes_i = lib.flatten_list(lifetimes_i, as_array = True)
 
-            tau_i, err_i, _ = lib.lh_fit(f = _single_exp,
+            tau_i, err_i, _ = lib.lh_fit(f = funcs.single_exp,
                                   data = lifetimes_i,
                                   binned_likelihood = True,
-                                  scale = 8,
+                                  scale = 4,
                                   limit_scale = (1, 15))
 
             tau_i = un.ufloat(*tau_i, *err_i)
@@ -145,6 +142,8 @@ if PLOT_LIFETIMES:
         ax = ax.ravel()
 
         for i in range(len(ax)):
+            n_datapoints = len(lifetimes[i])
+
             ax[i].hist(lifetimes[i],
                        color = "lightgrey",
                        bins = bins,
@@ -154,7 +153,7 @@ if PLOT_LIFETIMES:
                                                                                                         n_orig,
                                                                                                         n_datapoints))
 
-            ax[i].plot(xpts, _single_exp(xpts, taus[i].n), color = "firebrick", label = r"$\tau$ = {}".format(taus[i]))
+            ax[i].plot(xpts, funcs.single_exp(xpts, taus[i].n), color = "firebrick", label = r"$\tau$ = {}".format(taus[i]))
             ax[i].legend(loc = "upper right")
             ax[i].set_xlim(1)
             ax[i].set_xlabel("Dwell time")
@@ -162,12 +161,66 @@ if PLOT_LIFETIMES:
 
         plt.tight_layout()
         lib.save_current_fig(dftitle + "lifetimes")
-        plt.show()
 
         # Quite remarkably, the lifetime can be accurately estimated from very few traces, and so this certainly
         # tells us that more data isn't necessarily better, if the quality is poor
-        # TODO: do the same for slow enzyme
 
-if TEST_HMM_FIT:
-    # do we need this, as we already have the fit of the trace?
-    pass
+
+if STICH_TRACES:
+
+    n_reshuffles = 100
+
+    for dftitle, df_noise, df_true, df_true_nobleach in dfs:
+
+        reshuf_tau = []
+
+        # Plot lifetimes of true distribution, and see how observed trace lengths affect this
+        min_lengths = [0, 0.1, 0.25, 0.50, 0.75, 1] # percentages of max trace length.
+
+        # 1.   : remove traces shorter than 100% of observation time (remove any traces with bleaching)
+        # .5   : remove traces shorter than 50 % of observation time
+        # 0.   : remove traces shorter than 0%  of observation time (keep all traces)
+
+        # Maximum number of traces
+        n_orig = len(df_true_nobleach["id"].unique())
+
+        taus = []
+        n_traces = []
+        tmax = []
+
+        for trace_len in tqdm(min_lengths):
+            tmax_i = int(df_true_nobleach["time"].max() * trace_len)
+            df = df_true.groupby("id").filter(lambda x: len(x) >= tmax_i)
+
+            tau_reshuf = []
+            for i in range(n_reshuffles):
+                df_shuf = lib.shuffle_df_groups(df_true, group = "id")
+                df_shuf["time"] = range(len(df_shuf))
+                df_shuf["time"] += 1
+
+                lifetimes = lib.hmm_lifetimes(df_shuf["fret"], df_shuf["time"], drop_extra_cols = True)
+
+                tau_i, err_i, _ = lib.lh_fit(f = funcs.single_exp,
+                                             data = lifetimes,
+                                             binned_likelihood = True,
+                                             scale = 4,
+                                             limit_scale = (1, 15))
+                tau_reshuf.append(*tau_i)
+                n_traces.append(len(df_shuf["id"].unique()))
+
+            tr_mu  = np.mean(tau_reshuf)
+            tau_se = np.std(tau_reshuf)/np.sqrt(n_reshuffles)
+
+            tau = un.ufloat(tr_mu, tau_se)
+            taus.append(tau)
+
+        plt.errorbar(x = min_lengths,
+                     y = [tau.n for tau in taus],
+                     yerr = [tau.s for tau in taus],
+                     fmt = "o",
+                     capsize = 5,
+                     color = "black")
+
+        plt.xlabel("Traces shorter than fraction removed")
+
+        lib.save_current_fig(dftitle + "stitched_mc")

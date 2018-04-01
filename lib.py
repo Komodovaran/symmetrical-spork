@@ -7,6 +7,7 @@ import os
 import probfit
 import iminuit
 from sklearn import cluster
+from scipy import stats
 
 pd.set_option("display.width", 1000)
 pd.set_option('display.max_rows', 1000)
@@ -353,6 +354,9 @@ def hmm_lifetimes(idealized_trace, time, min_trans = 0.01, drop_extra_cols = Fal
 
     lifetimes = df
 
+    if drop_extra_cols:
+        lifetimes = df["lifetime"].values
+
     return lifetimes
 
 
@@ -431,3 +435,24 @@ def pick_random_traces(trace_df, n_traces, min_frames = "full"):
         t = random_traces["time"].max()
 
     return random_traces, random_ids
+
+
+def shuffle_df_groups(df, group, reset_index = True):
+    """
+    Parameters
+    ----------
+    df:
+        pandas dataframe to shuffle
+    group:
+        column containing groups to shuffle
+    reset_index
+        reset index on shuffled dataframe
+    Returns
+    -------
+    dataframe with shuffled groups
+    """
+
+    groups = [df for _, df in df.groupby(group)]
+    np.random.shuffle(groups)  # Shuffle groups inplace
+    df_shuffled = pd.concat(groups).reset_index(drop = reset_index)
+    return df_shuffled
