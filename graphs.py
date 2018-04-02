@@ -4,6 +4,7 @@ import funcs as funcs
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 import uncertainties as un
 from tqdm import tqdm
 
@@ -23,16 +24,15 @@ DISTRIBUTIONS = False
 LIFETIMES     = False
 STICH_TRACES  = True
 
-
-# Iterate over this
-dfs = [("S_", df_S_noise, df_S_true, df_S_true_nobleach),
-       ("F_", df_F_noise, df_F_true, df_F_true_nobleach)]
-
+# Iterate over this (title, color, noise, true, true_nobleach)
+dfs = [("S_", "#8DA0CB", df_S_noise, df_S_true, df_S_true_nobleach),
+       ("F_", "#66C2A5", df_F_noise, df_F_true, df_F_true_nobleach)]
 
 if SINGLE_TRACE:
-    for dftitle, df_noise, df_true, df_true_nobleach in dfs:
+    for dftitle, dfcol, df_noise, df_true, df_true_nobleach in dfs:
+
         # Pick 6 random trace IDs where one must be full length
-        rand_trace, _ = lib.pick_random_traces(trace_df = df_true, n_traces = 1)
+        rand_trace, _ = lib.pick_random_traces(trace_df = df_true, n_traces = 1, min_frames = 50)
 
         # Plot selected random traces
         fig, ax = plt.subplots(nrows = 1, ncols = 1, figsize = (6,2))
@@ -40,12 +40,13 @@ if SINGLE_TRACE:
         lifetimes = lib.hmm_lifetimes(rand_trace["fret"], rand_trace["time"])
         n_datapoints = len(lifetimes)
 
-        ax.plot(rand_trace["time"], rand_trace["fret"], label = "Trace fit", color = "royalblue", lw = 1)
+        ax.plot(rand_trace["time"], rand_trace["fret"], label = "Trace fit", color = dfcol, lw = 1.3)
 
-        rand_trace = rand_trace.loc[rand_trace["fret"].shift(-1) != rand_trace["fret"]] # remove consecutive duplicates
-        ax.plot(rand_trace["time"], rand_trace["fret"], "o", markersize = 5, color = "royalblue", label = "Observed {} transitions".format(n_datapoints))
+        # remove consecutive duplicates and endpoints to show how lifetimes are calculated
+        rand_trace = rand_trace.loc[rand_trace["fret"].shift(-1) != rand_trace["fret"]][1:-1]
+        ax.plot(rand_trace["time"], rand_trace["fret"], "o", markersize = 5, color = dfcol, label = "{} transitions".format(n_datapoints))
 
-        ax.set_xlim(0,200)
+        ax.set_xlim(0,100)
         ax.set_ylim(0,1)
         ax.set_xlabel("time")
         ax.set_ylabel("FRET")
@@ -55,50 +56,55 @@ if SINGLE_TRACE:
         lib.save_current_fig(dftitle + "single_trace")
 
 if RANDOM_TRACES:
-    for dftitle, df_noise, df_true, df_true_nobleach in dfs:
+    for dftitle, dfcol, df_noise, df_true, df_true_nobleach in dfs:
         # Pick 6 random trace IDs where one must be full length
-        rand_traces_noise, random_ids = lib.pick_random_traces(trace_df = df_noise, n_traces = 6)
+        rand_traces_noise, random_ids = lib.pick_random_traces(trace_df = df_noise, n_traces = 5)
         rand_traces_true = df_true[df_true["id"].isin(random_ids)]
 
         # Plot selected random traces
-        fig, ax = plt.subplots(nrows = 6, ncols = 1, figsize = (5,10))
-        ax = ax.ravel()
-        n = 0
+        fig, axes = plt.subplots(nrows = len(set(random_ids)), ncols = 1, figsize = (8,7))
 
-        for id, grp in rand_traces_noise.groupby("id"):
+        tmax = int(df_true_nobleach["time"].max())
+
+        for ax, (id, grp) in zip(axes, rand_traces_noise.groupby("id")):
             grp_true = rand_traces_true[rand_traces_true["id"] == id]
+            t_i = int(grp["time"].max())
 
-            ax[n].plot(grp["time"], grp["fret"], label = "Observed trace", color = "royalblue", lw = 1)
-            ax[n].plot(grp_true["time"], grp_true["fret"], label = "Underlying true trace", color = "firebrick", lw = 0.8)
+            ax.plot(grp["time"], grp["fret"], label = "Observed trace", color = dfcol, lw = 1.3)
+            ax.plot(grp_true["time"], grp_true["fret"], color = "firebrick", lw = 0.7)
 
-            ax[n].set_xlim(0,200)
-            ax[n].set_ylim(0,1)
-            ax[n].set_xlabel("time")
-            ax[n].set_ylabel("FRET")
-            ax[n].legend(loc = "upper right")
-            n += 1
+            if t_i < tmax:
+                ax.axvspan(xmin = t_i, xmax = tmax, color = "black", fill = True, alpha = 0.1)
 
-        plt.tight_layout()
+            ax.set_xlim(0,tmax)
+            ax.set_ylim(-0.15, 1.15)
+            plt.setp(ax.get_xticklabels(), visible = False)
+
+        fig.text(0.08, 0.5, 'FRET', va = 'center', rotation = 'vertical')
+        plt.setp(ax.get_xticklabels(), visible = True)
+        plt.subplots_adjust(hspace = .0)
+        plt.xlabel("time")
         lib.save_current_fig(dftitle + "example_traces")
 
 if DISTRIBUTIONS:
-    bins = np.arange(0, 1, 0.03)
-    fig, ax = plt.subplots(nrows = 1, ncols = 2, figsize = (9,4))
-    ax = ax.ravel()
+    for dftitle, dfcol, df_noise, df_true, df_true_nobleach in dfs:
+        bins = np.arange(0, 1, 0.03)
+        fig, ax = plt.subplots(nrows = 1, ncols = 2, figsize = (9,4))
+        ax = ax.ravel()
 
-    ax[0].hist(df_F_true["fret"], bins = bins, color = "firebrick", normed = True, zorder = 1, label = "True distribution")
-    ax[1].hist(df_F_noise["fret"], bins = bins, color = "royalblue", normed = True, zorder = 2, label = "Observed distribution")
+        ax[0].hist(df_F_true["fret"], bins = bins, color = "firebrick", normed = True, zorder = 1, label = "True distribution")
+        ax[1].hist(df_F_noise["fret"], bins = bins, color = dfcol, normed = True, zorder = 2, label = "Observed distribution")
 
-    for a in ax:
-        a.set_xlim(0,1)
-        a.set_xlabel("FRET")
-        a.set_ylabel("Probability density")
-        a.legend(loc = "upper right")
-    plt.tight_layout()
-    lib.save_current_fig("distributions")
+        for a in ax:
+            a.set_xlim(0,1)
+            a.set_xlabel("FRET")
+            a.set_ylabel("Probability density")
+            a.legend(loc = "upper right")
+        plt.tight_layout()
+        lib.save_current_fig(dftitle + "distributions")
 
 if LIFETIMES:
-    for dftitle, df_noise, df_true, df_true_nobleach in dfs:
+    for dftitle, dfcol, df_noise, df_true, df_true_nobleach in dfs:
 
         # Plot lifetimes of true distribution, and see how observed trace lengths affect this
         min_lengths = [0, 0.1, 0.25, 0.50, 0.75, 1] # percentages of max trace length.
@@ -145,7 +151,7 @@ if LIFETIMES:
             n_datapoints = len(lifetimes[i])
 
             ax[i].hist(lifetimes[i],
-                       color = "lightgrey",
+                       color = dfcol,
                        bins = bins,
                        normed = True,
                        label = "trace length $\geq$ {}% of longest\n{}/{} traces\n{} datapoints".format(int(min_lengths[i]*100),
@@ -169,17 +175,17 @@ if LIFETIMES:
 if STICH_TRACES:
 
     n_reshuffles = 100
+    min_lengths = [0, 0.1, 0.25, 0.50, 0.75, 1]  # percentages of max trace length.
 
-    for dftitle, df_noise, df_true, df_true_nobleach in dfs:
+    # Plot lifetimes of true distribution, and see how observed trace lengths affect this
+
+    # 1.   : remove traces shorter than 100% of observation time (remove any traces with bleaching)
+    # .5   : remove traces shorter than 50 % of observation time
+    # 0.   : remove traces shorter than 0 %  of observation time (keep all traces)
+
+    for dftitle, dfcol, df_noise, df_true, df_true_nobleach in dfs:
 
         reshuf_tau = []
-
-        # Plot lifetimes of true distribution, and see how observed trace lengths affect this
-        min_lengths = [0, 0.1, 0.25, 0.50, 0.75, 1] # percentages of max trace length.
-
-        # 1.   : remove traces shorter than 100% of observation time (remove any traces with bleaching)
-        # .5   : remove traces shorter than 50 % of observation time
-        # 0.   : remove traces shorter than 0%  of observation time (keep all traces)
 
         # Maximum number of traces
         n_orig = len(df_true_nobleach["id"].unique())
@@ -188,12 +194,15 @@ if STICH_TRACES:
         n_traces = []
         tmax = []
 
-        for trace_len in tqdm(min_lengths):
-            tmax_i = int(df_true_nobleach["time"].max() * trace_len)
-            df = df_true.groupby("id").filter(lambda x: len(x) >= tmax_i)
+        for trace_len in min_lengths:
+            if trace_len is 0:
+                df = df_true_nobleach
+            else:
+                tmax_i = int(df_true_nobleach["time"].max() * trace_len)
+                df = df_true.groupby("id").filter(lambda x: len(x) >= tmax_i)
 
             tau_reshuf = []
-            for i in range(n_reshuffles):
+            for i in tqdm(range(n_reshuffles)):
                 df_shuf = lib.shuffle_df_groups(df_true, group = "id")
                 df_shuf["time"] = range(len(df_shuf))
                 df_shuf["time"] += 1
@@ -208,18 +217,19 @@ if STICH_TRACES:
                 tau_reshuf.append(*tau_i)
                 n_traces.append(len(df_shuf["id"].unique()))
 
-            tr_mu   = np.mean(tau_reshuf)
-            tau_sem = np.std(tau_reshuf)/np.sqrt(n_reshuffles)
+            # manually calc std err of mean for plt.errorbar
+            # tr_mu   = np.mean(tau_reshuf)
+            # tau_sem = np.std(tau_reshuf)/np.sqrt(n_reshuffles)
+            # tau = un.ufloat(tr_mu, tau_sem)
 
-            tau = un.ufloat(tr_mu, tau_sem)
-            taus.append(tau)
+            taus.append(tau_reshuf)
 
-        plt.errorbar(x = min_lengths,
-                     y = [tau.n for tau in taus],
-                     yerr = [tau.s for tau in taus],
-                     fmt = "o",
-                     capsize = 5,
-                     color = "black")
+        sns.boxplot(x = min_lengths,
+                    y = taus,
+                    color = dfcol,
+                    notch = True,
+                    bootstrap = 1000,   # bootstrapping with resampling to get CI because we have no idea how the distribution looks like
+                    width = 0.3)
 
         plt.xlabel("Traces shorter than fraction removed")
         plt.ylabel(r"$\tau$")
