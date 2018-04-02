@@ -33,90 +33,6 @@ def flatten_list(input_list, as_array = False):
     return flat_lst
 
 
-def generate_traces(output_title,
-                    transitions,
-                    starts,
-                    means,
-                    noise,
-                    n_traces = 100,
-                    trace_max_len = 200,
-                    trace_min_len = 10,
-                    bleach_time = 50):
-    """
-    Generates random traces for k number of states and saves to pickle
-
-    Parameters
-    ----------
-    output_title:
-        title
-    transitions:
-        k * k transition matrix
-    starts:
-        k start points
-    means:
-        k means
-    noise:
-        singular value for all state noises, assuming they're the same
-    n_traces:
-        number of traces to generate
-    trace_max_len
-        longest observation time possible
-    trace_min_len
-        shortest observation time possible
-    bleach_time
-        rate of single exponential bleaching
-    """
-
-    # Initialize distributions from means and noise
-    dists = [pg.NormalDistribution(m, noise) for m in means]
-
-    # Generate HMM model
-    model = pg.HiddenMarkovModel.from_matrix(transitions, distributions = dists, starts = starts)
-    model.bake()
-
-    fret_lst, time_lst, id_lst = [], [], []
-    n = 0
-    while n < n_traces:
-        if bleach_time:
-            # Bleach time from single exp dist
-            bleach = np.int(np.random.exponential(bleach_time, 1))
-
-            if bleach < trace_min_len:
-                continue
-
-            # Generate samples, and remove datapoints after bleaching
-            fret = np.array(model.sample(trace_max_len))[:bleach]
-            time = np.array(range(len(fret)))[:bleach]
-            time +=1
-        else:
-            fret = np.array(model.sample(trace_max_len))
-            time = np.array(range(len(fret)))
-            time +=1
-
-        # Append results
-        fret_lst.append(fret)
-        time_lst.append(time)
-        id_lst.append([n]*len(fret))
-
-        n += 1
-
-    fret_lst = flatten_list(fret_lst, as_array = True)
-    time_lst = flatten_list(time_lst, as_array = True)
-    id_lst   = flatten_list(id_lst, as_array = True)
-
-    # noinspection PyTypeChecker
-    df = pd.DataFrame(dict(fret = fret_lst,
-                           time = time_lst,
-                           id = id_lst))
-
-    # Save results to pickle
-    os.makedirs("data/", exist_ok = True)
-
-    output = "data/" + output_title + ".pickle"
-    df.to_pickle(output, compression = None)
-
-
-
 def fit_hmm(obs,
             time,
             model_selection = "likelihood",
@@ -456,3 +372,144 @@ def shuffle_df_groups(df, group, reset_index = True):
     np.random.shuffle(groups)  # Shuffle groups inplace
     df_shuffled = pd.concat(groups).reset_index(drop = reset_index)
     return df_shuffled
+
+
+def _generate_traces(output_title,
+                     transitions,
+                     means,
+                     noise,
+                     n_traces = 100,
+                     trace_max_len = 200,
+                     trace_min_len = 10,
+                     bleach_time = 50):
+    """
+    Generates random traces for k number of states and saves to pickle
+
+    Parameters
+    ----------
+    output_title:
+        title
+    transitions:
+        k * k transition matrix
+    means:
+        k means
+    noise:
+        singular value for all state noises, assuming they're the same
+    n_traces:
+        number of traces to generate
+    trace_max_len
+        longest observation time possible
+    trace_min_len
+        shortest observation time possible
+    bleach_time
+        rate of single exponential bleaching
+    """
+
+    # Initialize distributions from means and noise
+    dists = [pg.NormalDistribution(m, noise) for m in means]
+    starts = np.array([1] * len(means))
+
+    # Generate HMM model
+    model = pg.HiddenMarkovModel.from_matrix(transitions, distributions = dists, starts = starts)
+    model.bake()
+
+    fret_lst, time_lst, id_lst = [], [], []
+    n = 0
+    while n < n_traces:
+        if bleach_time:
+            # Bleach time from single exp dist
+            bleach = np.int(np.random.exponential(bleach_time, 1))
+
+            if bleach < trace_min_len:
+                continue
+
+            # Generate samples, and remove datapoints after bleaching
+            fret = np.array(model.sample(trace_max_len))[:bleach]
+            time = np.array(range(len(fret)))[:bleach]
+            time +=1
+        else:
+            fret = np.array(model.sample(trace_max_len))
+            time = np.array(range(len(fret)))
+            time +=1
+
+        # Append results
+        fret_lst.append(fret)
+        time_lst.append(time)
+        id_lst.append([n]*len(fret))
+
+        n += 1
+
+    fret_lst = flatten_list(fret_lst, as_array = True)
+    time_lst = flatten_list(time_lst, as_array = True)
+    id_lst   = flatten_list(id_lst, as_array = True)
+
+    # noinspection PyTypeChecker
+    df = pd.DataFrame(dict(fret = fret_lst,
+                           time = time_lst,
+                           id = id_lst))
+
+    # Save results to pickle
+    os.makedirs("data/", exist_ok = True)
+
+    output = "data/" + output_title + ".pickle"
+    df.to_pickle(output, compression = None)
+
+
+
+def generate_traces(SMALL_SAMPLE_TEST,
+                    n_traces_full,
+                    n_traces_test,
+                    noise_level,
+                    bleach_time,
+                    trace_min_len,
+                    trace_max_len,
+                    state_means,
+                    slow_trans_mtrx,
+                    fast_trans_mtrx,
+                    labels):
+    """
+    User-facing trace generator. See parameter documentation in function _generate_traces
+    """
+
+    if len(state_means) != len(slow_trans_mtrx) or len(state_means) != len(fast_trans_mtrx):
+        raise ValueError("Incorrect number of transitions compared to number of states.")
+
+    if any(FRET < 0 or FRET > 1 for FRET in state_means):
+        raise ValueError("Invalid state value. Must be a value between 0 and 1.")
+
+    if not any("noise" and "true" and "true_nobleach" in s for s in labels):
+        raise ValueError("Incorrect labels. For each condition, labels must have noise, true and true_nobleach.")
+
+    if noise_level > 0.15:
+        raise Warning("Noise level may be set unrealistically high.")
+
+    if SMALL_SAMPLE_TEST:
+        print("Generating short traces.")
+        n_traces = n_traces_test
+    else:
+        print("Generating long traces.")
+        n_traces = n_traces_full
+
+    for n, title in enumerate(labels):
+        trans_freq = title.split("_")[0][1]
+        if trans_freq == "S":
+            transitions = slow_trans_mtrx
+        elif trans_freq == "F":
+            transitions = fast_trans_mtrx
+        else:
+            raise ValueError("Invalid name encountered")
+
+        title_end = title.split("_")[-1]
+        if title_end == "noise":
+            noise = noise_level
+        else:
+            noise = 0
+
+        _generate_traces(output_title  = title,
+                         n_traces      = n_traces,
+                         noise         = noise,
+                         bleach_time   = bleach_time,
+                         trace_min_len = trace_min_len,
+                         trace_max_len = trace_max_len,
+                         means         = state_means,
+                         transitions   = transitions)

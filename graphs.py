@@ -208,10 +208,10 @@ if STICH_TRACES:
                 tau_reshuf.append(*tau_i)
                 n_traces.append(len(df_shuf["id"].unique()))
 
-            tr_mu  = np.mean(tau_reshuf)
-            tau_se = np.std(tau_reshuf)/np.sqrt(n_reshuffles)
+            tr_mu   = np.mean(tau_reshuf)
+            tau_sem = np.std(tau_reshuf)/np.sqrt(n_reshuffles)
 
-            tau = un.ufloat(tr_mu, tau_se)
+            tau = un.ufloat(tr_mu, tau_sem)
             taus.append(tau)
 
         plt.errorbar(x = min_lengths,
@@ -222,5 +222,6 @@ if STICH_TRACES:
                      color = "black")
 
         plt.xlabel("Traces shorter than fraction removed")
+        plt.ylabel(r"$\tau$")
 
         lib.save_current_fig(dftitle + "stitched_mc")
