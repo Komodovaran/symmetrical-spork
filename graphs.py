@@ -21,8 +21,8 @@ df_F_true_nobleach = pd.read_pickle("data/2F_state_true_nobleach.pickle")
 SINGLE_TRACE  = False
 RANDOM_TRACES = False
 DISTRIBUTIONS = False
-LIFETIMES     = False
-STICH_TRACES  = True
+LIFETIMES     = True
+STICH_TRACES  = False
 
 # Iterate over this (title, color, noise, true, true_nobleach)
 dfs = [("S_", "#8DA0CB", df_S_noise, df_S_true, df_S_true_nobleach),
@@ -62,7 +62,7 @@ if RANDOM_TRACES:
         rand_traces_true = df_true[df_true["id"].isin(random_ids)]
 
         # Plot selected random traces
-        fig, axes = plt.subplots(nrows = len(set(random_ids)), ncols = 1, figsize = (8,7))
+        fig, axes = plt.subplots(nrows = len(set(random_ids)), ncols = 1, figsize = (8,4))
 
         tmax = int(df_true_nobleach["time"].max())
 
@@ -118,8 +118,12 @@ if LIFETIMES:
         tmax = []
 
         for trace_len in min_lengths:
-            tmax_i = int(df_true_nobleach["time"].max() * trace_len)
-            df = df_true.groupby("id").filter(lambda x: len(x) >= tmax_i)
+            if trace_len is 0:
+                tmax_i = int(df_true_nobleach["time"].max())
+                df = df_true_nobleach
+            else:
+                tmax_i = int(df_true_nobleach["time"].max() * trace_len)
+                df = df_true.groupby("id").filter(lambda x: len(x) >= tmax_i)
 
             lifetimes_i = []
             for id, grp in tqdm(df.groupby("id")):
