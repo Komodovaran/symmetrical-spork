@@ -6,5 +6,3 @@ This is a small collection of scripts for generating traces that emulate real tr
 
 1. Generate traces with desired features running <code>traces.py</code>.
 2. Run <code>graphs.py</code> to generate graphs. Set desired analysis methods at top of script.
-
-The project is still in its alpha phase, so things might break or yield unexpected results.
